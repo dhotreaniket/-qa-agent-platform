@@ -21,7 +21,7 @@ Raw Requirement
 [Agent 2: Test Case Agent] ──► Test Cases (Positive / Negative / Edge)
       │
       ▼
-[Agent 3: Framework Analyzer] (in progress) ──► Framework + Strategy Decision
+[Agent 3: Framework Analyzer]  ──► Framework + Strategy Decision
       │
       ▼
 [Agent 4: Code Generator] (planned) ──► Executable Automation Code
