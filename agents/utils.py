@@ -1,6 +1,7 @@
 import time
-from google.genai.errors import ClientError
+import os
 
+from google.genai.errors import ClientError
 
 def invoke_with_retry(chain, input_dict, max_retries=3):
     for attempt in range(max_retries):
@@ -27,3 +28,10 @@ def normalize_content(content):
                 text_parts.append(item["text"])
         return "\n".join(text_parts)
     return content
+
+def load_if_exists(filepath: str) -> str | None:
+    """Returns file content if it exists, else None."""
+    if os.path.exists(filepath):
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+    return None
