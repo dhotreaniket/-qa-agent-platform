@@ -2,12 +2,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 import os
 from dotenv import load_dotenv
+from agents.utils import invoke_with_retry
 
 load_dotenv()
 
 
-def get_structured_story(raw_requirement: str) -> str:
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=os.getenv("GOOGLE_API_KEY"))
+def get_structured_story(raw_requirement: str, model_name: str) -> str:
+    llm = ChatGoogleGenerativeAI(model=model_name, google_api_key=os.getenv("GOOGLE_API_KEY"))
 
     prompt = ChatPromptTemplate.from_template(
         """You are a senior business analyst. Convert this raw requirement into a 
@@ -20,5 +21,4 @@ def get_structured_story(raw_requirement: str) -> str:
     )
 
     chain = prompt | llm
-    result = chain.invoke({"requirement": raw_requirement})
-    return result.content
+    return invoke_with_retry(chain, {"requirement": raw_requirement})
