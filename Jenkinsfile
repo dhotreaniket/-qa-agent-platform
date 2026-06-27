@@ -24,7 +24,7 @@ pipeline {
         stage('Run Automation Suite - Practice Test Automation - Login') {
             steps {
                 dir('playwright-runner') {
-                    bat 'npx playwright test tests/login.spec.js --headed --reporter=list'
+                    bat 'npx playwright test tests/login.spec.js --headed --reporter=list --project=chromium --project=webkit'
                 }
             }
         }

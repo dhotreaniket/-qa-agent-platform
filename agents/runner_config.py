@@ -5,7 +5,7 @@ RUNNER_CONFIGS = {
         "tests_subdir": "tests",
         "page_object_filename": "LoginPage.js",
         "test_filename": "login.spec.js",
-        "run_command": "npx playwright test {test_file} --headed --reporter=list",
+        "run_command": "npx playwright test {test_file} --headed --reporter=list --project=chromium --project=webkit",
         "language": "JavaScript",
         "framework": "Playwright"
     },
