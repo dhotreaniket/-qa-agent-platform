@@ -10,10 +10,11 @@ from agents.diagnostic_runner import run_diagnostic_test, did_test_pass
 from agents.utils import load_if_exists
 from agents.report_generator import parse_test_results, generate_html_report
 from agents.jenkins_generator import generate_jenkinsfile
+from agents.jira_agent import create_jira_story
 
 
 def run_pipeline(raw_requirement: str, target_url: str, model_name: str, app_name: str,
-                  automation_type: str = "web", force_rerun: bool = False):
+                  automation_type: str = "web", force_rerun: bool = False, push_to_jira: bool = True):
     runner = get_runner_config(automation_type)
     os.makedirs("output", exist_ok=True)
 
@@ -27,6 +28,18 @@ def run_pipeline(raw_requirement: str, target_url: str, model_name: str, app_nam
         with open("output/user_story.md", "w", encoding="utf-8") as f:
             f.write(story)
         time.sleep(15)
+
+    # --- Jira: push story (optional) ---
+    jira_info = None if force_rerun else load_if_exists("output/jira_issue.txt")
+    if push_to_jira and not jira_info:
+        print("=== Pushing User Story to Jira ===")
+        jira_result = create_jira_story(story, summary=f"Login Automation - {app_name}")
+        jira_info = f"{jira_result['key']}\n{jira_result['url']}"
+        with open("output/jira_issue.txt", "w", encoding="utf-8") as f:
+            f.write(jira_info)
+        print(f"[Created Jira issue: {jira_result['key']} - {jira_result['url']}]")
+    elif push_to_jira and jira_info:
+        print(f"=== Jira: Skipped (already created) - {jira_info.splitlines()[0]} ===")
 
     # --- Agent 2 ---
     test_cases = None if force_rerun else load_if_exists("output/test_cases.md")
@@ -119,7 +132,7 @@ def run_pipeline(raw_requirement: str, target_url: str, model_name: str, app_nam
     return {
         "story": story, "test_cases": test_cases, "framework_plan": framework_plan,
         "code_files": code_files, "execution_passed": passed, "execution_output": test_output,
-        "parsed_results": parsed_results
+        "parsed_results": parsed_results, "jira_info": jira_info
     }
 
 
@@ -137,5 +150,6 @@ if __name__ == "__main__":
         config["gemini_model"],
         config.get("app_name", "QA Automation Platform"),
         automation_type=config.get("automation_type", "web"),
-        force_rerun=False
+        force_rerun=False,
+        push_to_jira=True
     )
