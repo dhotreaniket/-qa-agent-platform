@@ -13,7 +13,7 @@ def generate_jenkinsfile(runner_dir: str, test_command: str, app_name: str) -> s
             }}
         }}
 
-        stage('Install Dependencies') {{
+        stage('Install Playwright Dependencies') {{
             steps {{
                 dir('{runner_dir}') {{
                     bat 'npm install'
@@ -25,15 +25,21 @@ def generate_jenkinsfile(runner_dir: str, test_command: str, app_name: str) -> s
         stage('Run Automation Suite - {app_name}') {{
             steps {{
                 dir('{runner_dir}') {{
-                    bat '{test_command}'
+                    bat '{test_command} > ..\\\\test_output.txt 2>&1'
                 }}
+            }}
+        }}
+
+        stage('Generate Report') {{
+            steps {{
+                bat 'python generate_report_only.py test_output.txt "{app_name}"'
             }}
         }}
     }}
 
     post {{
         always {{
-            archiveArtifacts artifacts: '{runner_dir}/test-results/**, output/execution_report.html', allowEmptyArchive: true
+            archiveArtifacts artifacts: '{runner_dir}/test-results/**, output/execution_report.html, test_output.txt', allowEmptyArchive: true
         }}
         failure {{
             echo 'Pipeline failed - regression detected.'
