@@ -1,6 +1,5 @@
 import time
 import os
-import shutil
 from agents.config_loader import load_config
 from agents.story_agent import get_structured_story
 from agents.test_case_agent import generate_test_cases
@@ -9,9 +8,11 @@ from agents.code_generator_agent import generate_automation_code
 from agents.runner_config import get_runner_config
 from agents.diagnostic_runner import run_diagnostic_test, did_test_pass
 from agents.utils import load_if_exists
+from agents.report_generator import parse_test_results, generate_html_report
+from agents.jenkins_generator import generate_jenkinsfile
 
 
-def run_pipeline(raw_requirement: str, target_url: str, model_name: str,
+def run_pipeline(raw_requirement: str, target_url: str, model_name: str, app_name: str,
                   automation_type: str = "web", force_rerun: bool = False):
     runner = get_runner_config(automation_type)
     os.makedirs("output", exist_ok=True)
@@ -52,7 +53,7 @@ def run_pipeline(raw_requirement: str, target_url: str, model_name: str,
             f.write(framework_plan)
         time.sleep(15)
 
-    # --- Agent 4: write DIRECTLY into the runner project, no manual copy ---
+    # --- Agent 4: write DIRECTLY into the runner project ---
     runner_dir = runner["runner_dir"]
     pages_dir = os.path.join(runner_dir, runner["pages_subdir"]) if runner["pages_subdir"] else None
     tests_dir = os.path.join(runner_dir, runner["tests_subdir"])
@@ -84,21 +85,41 @@ def run_pipeline(raw_requirement: str, target_url: str, model_name: str,
             f.write(code_files["test_file"])
         print(f"[Written directly to {test_file_full_path}]")
 
-    # --- Agent 5 (basic, inline for now): auto-execute ---
+    # --- Agent 5: auto-execute ---
     print(f"=== Agent 5: Executing {runner['framework']} Tests ===")
     relative_test_path = f"{runner['tests_subdir']}/{runner['test_filename']}"
     test_output = run_diagnostic_test(relative_test_path, runner_dir)
     passed = did_test_pass(test_output)
 
-    print(test_output[-2000:])  # show tail of output
+    print(test_output[-2000:])
     print(f"\n=== RESULT: {'PASSED' if passed else 'FAILED'} ===")
 
     with open("output/execution_report.txt", "w", encoding="utf-8") as f:
         f.write(test_output)
 
+    # --- Agent 7: Report + Jenkins ---
+    print("\n=== Agent 7: Generating Report + Jenkins Pipeline ===")
+    parsed_results = parse_test_results(test_output)
+    html_report = generate_html_report(parsed_results, app_name)
+
+    with open("output/execution_report.html", "w", encoding="utf-8") as f:
+        f.write(html_report)
+    print("[Saved output/execution_report.html]")
+
+    full_test_command = runner["run_command"].format(test_file=relative_test_path)
+    jenkinsfile = generate_jenkinsfile(
+        runner_dir=runner_dir,
+        test_command=full_test_command,
+        app_name=app_name
+    )
+    with open("Jenkinsfile", "w", encoding="utf-8") as f:
+        f.write(jenkinsfile)
+    print("[Saved Jenkinsfile]")
+
     return {
         "story": story, "test_cases": test_cases, "framework_plan": framework_plan,
-        "code_files": code_files, "execution_passed": passed, "execution_output": test_output
+        "code_files": code_files, "execution_passed": passed, "execution_output": test_output,
+        "parsed_results": parsed_results
     }
 
 
@@ -114,6 +135,7 @@ if __name__ == "__main__":
         raw_requirement,
         config["target_url"],
         config["gemini_model"],
+        config.get("app_name", "QA Automation Platform"),
         automation_type=config.get("automation_type", "web"),
         force_rerun=False
     )
