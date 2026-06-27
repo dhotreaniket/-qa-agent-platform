@@ -6,7 +6,7 @@ An AI-powered, multi-agent pipeline that automates the QA lifecycle — from raw
 
 Manual QA workflows involve repetitive, time-consuming steps: writing user stories, deriving test cases, building automation scripts, and maintaining frameworks. This project explores how a chain of specialized AI agents — each responsible for one step — can accelerate this pipeline while keeping outputs structured, reviewable, and framework-ready for real test execution.
 
-**As of this milestone, the pipeline runs end-to-end with a single command**: `python main.py` takes a requirement and a target URL, and autonomously produces a structured user story, test cases, a verified automation strategy (grounded in the live page's real HTML, not guessed locators), real runnable Playwright code written directly into the execution project, and then **automatically executes that code and reports pass/fail** — with no manual file-copying or manual test-running required.
+**As of this milestone, the pipeline runs end-to-end with a single command**: `python main.py` takes a requirement and a target URL, and autonomously produces a real Jira story (pushed via the Jira REST API), structured test cases, a verified automation strategy (grounded in the live page's real HTML, not guessed locators), real runnable Playwright code written directly into the execution project, automatic test execution with pass/fail reporting, an HTML report, and a generated Jenkinsfile for CI/CD — covering the full requirement-to-regression lifecycle originally envisioned for this project.
 
 The architecture is also designed to be **automation-type agnostic**: a `runner_config` abstraction means the same Agent 3/4 pipeline can target Web (Playwright), and is structured to extend to API (RestAssured), Mobile (Appium), or Performance (k6) by adding a new config entry and prompt variant — not rewriting the pipeline.
 
@@ -45,7 +45,7 @@ Raw Requirement
 
 | Agent | Status | Description |
 |---|---|---|
-| 1. Story Agent | ✅ Working | Converts raw requirements into structured Jira-style user stories |
+| 1. Story Agent | ✅ Working | Converts raw requirements into structured Jira-style user stories, and **pushes them directly into a real Jira Cloud project** via the REST API (or reads an existing Jira story by key instead of generating one) |
 | 2. Test Case Agent | ✅ Working | Generates positive, negative, and edge-case test cases from a user story |
 | 3. Framework Analyzer | ✅ Working | Reads the LIVE HTML of the target app (via Playwright) and recommends a Playwright (JS) automation strategy with real, verified locators — no hardcoded or guessed selectors |
 | 4. Code Generator | ✅ Working | Generates real, runnable Playwright (JS) Page Object + test spec files from the verified framework plan |
@@ -139,6 +139,7 @@ Outputs are saved to `output/user_story.md` and `output/test_cases.md`.
 - [x] Agent 4: Code Generator (executable code, written directly into the runner project — no manual copying)
 - [x] Agent 5: Execution Agent (auto-runs the real test suite via subprocess, captures pass/fail)
 - [x] Agent 6: Auto-Heal Agent v1 (diagnosis-driven, validated against real bugs including a subtle interaction-method issue)
+- [x] Jira integration: push generated stories to a real Jira Cloud project, or read an existing story by key
 - [ ] Agent 6 v2: robust self-heal loop (structural/semantic patch matching instead of exact string match)
 - [ ] Agent 7: Reporting + Jenkins CI/CD pipeline generation
 - [ ] Extend `runner_config` to support API (RestAssured/Java), Mobile (Appium), and Performance (k6) automation types
