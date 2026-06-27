@@ -33,12 +33,7 @@ def generate_jenkinsfile(runner_dir: str, test_command: str, app_name: str) -> s
 
     post {{
         always {{
-            archiveArtifacts artifacts: '{runner_dir}/test-results/**', allowEmptyArchive: true
-            publishHTML(target: [
-                reportDir: 'output',
-                reportFiles: 'execution_report.html',
-                reportName: 'QA Automation Report'
-            ])
+            archiveArtifacts artifacts: '{runner_dir}/test-results/**, output/execution_report.html', allowEmptyArchive: true
         }}
         failure {{
             echo 'Pipeline failed - regression detected.'

@@ -32,12 +32,7 @@ pipeline {
 
     post {
         always {
-            archiveArtifacts artifacts: 'playwright-runner/test-results/**', allowEmptyArchive: true
-            publishHTML(target: [
-                reportDir: 'output',
-                reportFiles: 'execution_report.html',
-                reportName: 'QA Automation Report'
-            ])
+            archiveArtifacts artifacts: 'playwright-runner/test-results/**, output/execution_report.html', allowEmptyArchive: true
         }
         failure {
             echo 'Pipeline failed - regression detected.'
