@@ -34,7 +34,7 @@ test.describe('Practice Test Automation - Login Tests', () => {
     await page.locator('#submit').focus();
     await page.locator('#submit').click();
 
-    await expect(page).toHaveURL(/.*\/logged-in-successfully\//, { timeout: 10000 });
+    await expect(page).toHaveURL(/.*\/logged-in-successfully\/?$/, { timeout: 10000 });
     const successHeader = page.locator('h1.post-title');
     await expect(successHeader).toBeVisible();
     await expect(successHeader).toHaveText('Logged In Successfully');
