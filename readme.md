@@ -6,6 +6,10 @@ An AI-powered, multi-agent pipeline that automates the QA lifecycle — from raw
 
 Manual QA workflows involve repetitive, time-consuming steps: writing user stories, deriving test cases, building automation scripts, and maintaining frameworks. This project explores how a chain of specialized AI agents — each responsible for one step — can accelerate this pipeline while keeping outputs structured, reviewable, and framework-ready for real test execution.
 
+**As of this milestone, the pipeline runs end-to-end with a single command**: `python main.py` takes a requirement and a target URL, and autonomously produces a structured user story, test cases, a verified automation strategy (grounded in the live page's real HTML, not guessed locators), real runnable Playwright code written directly into the execution project, and then **automatically executes that code and reports pass/fail** — with no manual file-copying or manual test-running required.
+
+The architecture is also designed to be **automation-type agnostic**: a `runner_config` abstraction means the same Agent 3/4 pipeline can target Web (Playwright), and is structured to extend to API (RestAssured), Mobile (Appium), or Performance (k6) by adding a new config entry and prompt variant — not rewriting the pipeline.
+
 This is a **build-in-public** project. Progress, design decisions, and learnings are documented on [YouTube/LinkedIn — add your links].
 
 ## Architecture
@@ -45,24 +49,29 @@ Raw Requirement
 | 2. Test Case Agent | ✅ Working | Generates positive, negative, and edge-case test cases from a user story |
 | 3. Framework Analyzer | ✅ Working | Reads the LIVE HTML of the target app (via Playwright) and recommends a Playwright (JS) automation strategy with real, verified locators — no hardcoded or guessed selectors |
 | 4. Code Generator | ✅ Working | Generates real, runnable Playwright (JS) Page Object + test spec files from the verified framework plan |
-| 5. Execution Agent | 📋 Planned | Will trigger `npx playwright test` via Python subprocess and capture results |
-| 6. Auto-Heal Agent | 🔧 Working, with known limitations | Re-fetches live HTML and classifies failures (locator / timing / assertion). Reliably diagnoses locator mismatches grounded in real HTML; struggles to produce correct *structural* fixes for timing/race-condition failures from static logs alone — see "Lessons learned" below. |
+| 5. Execution Agent | ✅ Working | Automatically triggers the real test run (`npx playwright test`) via Python subprocess directly against the generated code in the runner project, captures output, reports pass/fail |
+| 6. Auto-Heal Agent | 🔧 Working, with known limitations | Re-fetches live HTML + runs an instrumented diagnostic re-run to classify failures (locator / timing / assertion / wrong-interaction-method) and propose fixes. A self-heal loop (patch → re-run → verify, with retry) is built but currently limited by naive exact-string patch matching — see "Lessons learned." |
 | 7. Report + CI/CD Agent | 📋 Planned | Generates execution reports and Jenkins pipeline configs |
 
 ## Key design decisions
 
-- **Config-driven, not hardcoded**: target URL and Gemini model name live in `config.json`, never hardcoded in agent code. Switching target apps or models requires zero code changes.
-- **Real HTML inspection, not guessed locators**: Agent 3 uses a headless Playwright browser to fetch and read the actual live HTML of the target page before recommending locators — avoiding hallucinated selectors that wouldn't work in practice. This is the same engine planned for the future Execution Agent, so it's reused rather than duplicated.
-- **Retry-aware API calls**: all Gemini calls go through a shared retry helper (`agents/utils.py`) that automatically backs off and retries on rate-limit errors.
+- **Config-driven, not hardcoded**: target URL, Gemini model name, and automation type (`web`/future: `api`/`mobile`/`performance`) live in `config.json`, never hardcoded in agent code.
+- **Automation-type agnostic architecture**: a `runner_config.py` registry maps an `automation_type` to its runner directory, file structure, run command, and language/framework — Agent 3 and Agent 4 accept `framework`/`language` as parameters rather than hardcoding "Playwright JavaScript," so adding API (RestAssured/Java) or Mobile (Appium) support means adding a config entry and prompt variant, not restructuring the pipeline.
+- **No manual file-copying**: Agent 4 writes generated code directly into the execution project's real file structure (e.g. `playwright-runner/tests/`), and Agent 5 triggers real execution via `subprocess` immediately after — a single `python main.py` run covers requirement-to-execution with zero manual steps.
+- **Real HTML inspection, not guessed locators**: Agent 3 uses a headless Playwright browser to fetch and read the actual live HTML of the target page before recommending locators.
+- **Caching**: each agent's output is cached to disk; re-running the pipeline skips already-completed steps unless `force_rerun=True`, saving both time and API tokens during iteration.
+- **Retry-aware API calls**: all Gemini calls go through a shared retry helper that backs off and retries on both rate-limit (429) and transient server overload (503) errors.
 
 ## Lessons learned (real debugging journey)
 
 Building this end-to-end surfaced genuinely useful findings, documented here rather than hidden:
 
-- **Bot detection is real**: the target practice site blocks naive HTTP requests and sometimes headless browsers. Fix: use a real Playwright browser context (headed mode more reliable than headless for this specific site) rather than a simple HTTP client.
-- **Generated locators can still be wrong even when grounded in real HTML** — the model correctly read `h1.post-title` from live HTML, but the actual *test logic* failure (TC_003) was a race condition, not a locator problem. Diagnosing the right failure category matters as much as having accurate data.
-- **Auto-Heal Agent limitation**: given only a static error log, the agent could correctly *classify* a failure as a timing issue but could not always generate the correct *structural* fix (e.g., wrapping a trigger action in `Promise.all()` with `waitForURL`) — it tended to anchor on the previously-broken code and reshuffle assertions instead. Confirming the real fix required adding diagnostic logging and re-running to observe actual behavior (e.g., discovering that pressing `Enter` never submitted the form — only a real button click did). This suggests a more effective Auto-Heal design needs **two passes**: an instrumented diagnostic run, then a fix proposal informed by runtime evidence, not log text alone.
-- **Config-driven design paid off**: switching Gemini models (after hitting daily free-tier limits) and pointing at a different target URL required zero code changes — only edits to `config.json`.
+- **Bot detection is real**: the target practice site blocks naive HTTP requests and is sometimes flaky even with headless Playwright. Fix: prefer headed/real browser contexts, add retry-with-backoff to HTML fetches, and default test execution to a single reliable browser (Chromium) rather than all three.
+- **Generated locators can still be wrong even when grounded in real HTML** — the model correctly read `h1.post-title` from live HTML, but the actual test failure (TC_003) was a race condition / wrong interaction method, not a locator problem.
+- **Auto-Heal Agent — diagnosis vs. fix quality are different skills**: given only a static error log, the agent could correctly classify a failure as timing-related but initially proposed fixes that just reshuffled existing assertions rather than restructuring the interaction. Adding a genuine **instrumented re-run** (actually re-executing the test to gather fresh runtime evidence, not just analyzing a stale log) let the agent correctly diagnose a subtle real bug: pressing Enter doesn't submit this particular form because its inputs sit inside a `<div>`, not a `<form>` — and it proposed focusing the submit button before pressing Enter, which works.
+- **Self-heal loop limitation (current, unresolved)**: the patch-application step uses exact string matching to locate code to replace. In practice the LLM's restated "broken code" doesn't always match the real file's exact whitespace/formatting, causing `patch_failed_old_code_not_found`. A more robust version would have the agent locate the target code by structural/semantic search (e.g., AST-based or line-range based) rather than literal string matching.
+- **Config-driven design paid off**: switching Gemini models (after hitting daily free-tier limits) and pointing at a different target URL required zero code changes — only edits to `config.json`. The same is intended to hold true for switching automation types in the future.
+- **Windows-specific subprocess gotcha**: `subprocess.run(["npx", ...])` fails with `FileNotFoundError` on Windows because `npx` resolves to `npx.cmd`; using a single command string with `shell=True` fixes this.
 
 ## Tech stack
 
@@ -126,13 +135,14 @@ Outputs are saved to `output/user_story.md` and `output/test_cases.md`.
 
 ## Roadmap
 
-- [x] Agent 3: Framework Analyzer (reads live HTML via Playwright, recommends Playwright POM strategy with real locators)
-- [x] Agent 4: Code Generator (executable Playwright JS code — Page Object + test spec)
-- [x] Agent 6: Auto-Heal Agent (first version — diagnoses from live HTML, documented limitations on timing/race-condition fixes)
-- [ ] Agent 5: Execution Agent (run generated tests via Python subprocess, capture pass/fail)
-- [ ] Agent 6 v2: two-pass auto-heal (instrumented diagnostic run + evidence-based fix)
+- [x] Agent 3: Framework Analyzer (reads live HTML via Playwright, recommends automation strategy with real locators — now framework/language agnostic)
+- [x] Agent 4: Code Generator (executable code, written directly into the runner project — no manual copying)
+- [x] Agent 5: Execution Agent (auto-runs the real test suite via subprocess, captures pass/fail)
+- [x] Agent 6: Auto-Heal Agent v1 (diagnosis-driven, validated against real bugs including a subtle interaction-method issue)
+- [ ] Agent 6 v2: robust self-heal loop (structural/semantic patch matching instead of exact string match)
 - [ ] Agent 7: Reporting + Jenkins CI/CD pipeline generation
-- [ ] Optional: lightweight UI/CLI for non-technical pipeline triggering
+- [ ] Extend `runner_config` to support API (RestAssured/Java), Mobile (Appium), and Performance (k6) automation types
+- [ ] Optional: lightweight UI/CLI for non-technical pipeline triggering (e.g. "I want to test Web/API/Mobile/Performance for this app")
 
 ## Author
 
